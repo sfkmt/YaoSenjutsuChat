@@ -1,50 +1,54 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+# YaoSenjutsuChat Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. 占星術の正確性
+すべての占星術計算は正確性を最優先とする。天体位置の計算、ハウスシステム、アスペクトの判定において、業界標準の精度を維持する。
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+### II. 日本語対応
+すべての出力は日本語で提供する。占星術用語は適切な日本語訳を使用し、ユーザーにとって理解しやすい表現を心がける。
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### III. テスト駆動開発（必須）
+TDDを厳格に適用：テスト作成 → ユーザー承認 → テスト失敗 → 実装 → テスト成功のサイクルを徹底する。
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### IV. モジュラー設計
+占星術の各機能（出生図、トランジット、相性診断など）は独立したモジュールとして設計し、相互に依存しない構造とする。
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### V. データの整合性
+ユーザーの個人情報（生年月日、出生地など）は適切に保護し、占星術計算に必要な最小限の情報のみを保持する。
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+## 技術要件
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### フロントエンド
+- モダンなWebフレームワーク（React/Vue.js等）を使用
+- レスポンシブデザインでモバイル対応
+- リアルタイムチャット機能
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+### バックエンド
+- RESTful API設計
+- 占星術計算エンジンの分離
+- セキュアな認証・認可システム
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+### データベース
+- ユーザー情報の暗号化
+- 占星術データの効率的な保存・検索
+
+## 開発ワークフロー
+
+### コードレビュー
+- すべてのPRは占星術計算の正確性を検証
+- セキュリティレビューを必須とする
+- 日本語コメント・ドキュメントの品質確認
+
+### 品質ゲート
+- 単体テストカバレッジ80%以上
+- 統合テストでの占星術計算精度検証
+- パフォーマンステスト（レスポンス時間<2秒）
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+この憲法は他のすべての開発方針に優先する。修正には文書化、承認、移行計画が必要。
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+すべてのPR/レビューはこの憲法への準拠を検証し、複雑性は正当化されなければならない。
+
+**Version**: 1.0.0 | **Ratified**: 2025-01-27 | **Last Amended**: 2025-01-27
