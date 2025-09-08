@@ -13,10 +13,34 @@ export default function ChatInterface({ threadId }: ChatInterfaceProps) {
   useEffect(() => {
     // Load conversation history if exists
     if (chatRef.current && threadId) {
-      // This will be connected to Firebase later
       console.log('Loading thread:', threadId)
     }
   }, [threadId])
+
+  // カスタムリクエストハンドラー
+  const customRequest = async (body: any, signals: any) => {
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...body,
+          threadId: threadId,
+        }),
+      })
+      
+      const data = await response.json()
+      console.log('API Response:', data)
+      
+      // DeepChatが期待する形式で返す
+      signals.onResponse({ text: data.text })
+    } catch (error) {
+      console.error('Chat error:', error)
+      signals.onResponse({ error: 'エラーが発生しました' })
+    }
+  }
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -33,16 +57,7 @@ export default function ChatInterface({ threadId }: ChatInterfaceProps) {
             text: 'あなたの悩みや質問を入力してください...',
           },
         }}
-        request={{
-          url: '/api/chat',
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          additionalBodyProps: {
-            threadId: threadId,
-          },
-        }}
+        request={customRequest}
         initialMessages={[
           {
             role: 'ai',

@@ -11,6 +11,7 @@ export interface ConversationContext {
   messages: Message[]
   userInfo?: {
     dateOfBirth?: string
+    datetime?: string
     birthLocation?: string
     birthLat?: number
     birthLon?: number

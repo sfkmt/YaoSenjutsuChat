@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-// Mastraの代わりにシンプルなエージェントを使用
-import { simpleAgent } from '@/app/lib/simple-agent'
+// 八百占術API対応のMastraエージェントを使用
+import { mastraYaoSenjutsuAgent } from '@/app/lib/mastra-yaosenjutsu'
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
+    console.log('Request body:', JSON.stringify(body, null, 2))
+    
+    // DeepChatは messages 配列を送信する
     const { messages, threadId } = body
+    
+    // threadIdがない場合はランダムに生成
+    const actualThreadId = threadId || `thread_${Date.now()}_${Math.random().toString(36).substring(7)}`
 
     if (!messages || messages.length === 0) {
       return NextResponse.json(
@@ -14,26 +20,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!threadId) {
-      return NextResponse.json(
-        { error: 'Thread ID is required' },
-        { status: 400 }
-      )
-    }
-
     // Get the latest user message
     const userMessage = messages[messages.length - 1]
-    if (!userMessage || userMessage.role !== 'user') {
+    const messageText = userMessage.text || userMessage.content || ''
+    
+    if (!messageText) {
       return NextResponse.json(
-        { error: 'Invalid message format' },
+        { error: 'Empty message' },
         { status: 400 }
       )
     }
 
-    // Process message with simple agent
-    const response = await simpleAgent.processMessage(
-      userMessage.text,
-      threadId
+    console.log('Processing message:', messageText, 'with threadId:', actualThreadId)
+
+    // Process message with YaoSenjutsu Mastra agent
+    const response = await mastraYaoSenjutsuAgent.processMessage(
+      messageText,
+      actualThreadId
     )
 
     // Return response in DeepChat format
