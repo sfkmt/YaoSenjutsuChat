@@ -15,8 +15,23 @@ export interface ConversationContext {
     birthLocation?: string
     birthLat?: number
     birthLon?: number
+    gender?: 'male' | 'female'
   }
-  chartData?: any
+  secondUserInfo?: {
+    dateOfBirth?: string
+    datetime?: string
+    birthLocation?: string
+    birthLat?: number
+    birthLon?: number
+    gender?: 'male' | 'female'
+    name?: string
+  }
+  chartData?: {
+    primary?: any
+    secondary?: any[]
+    timestamp?: number
+    expiresAt?: number
+  }
 }
 
 // メモリ内ストレージ（開発環境用）

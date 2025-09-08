@@ -1,0 +1,32 @@
+# Serena MCP設定ファイル
+
+## プロジェクト概要
+YaoSenjutsuChat - 占星術チャットアプリケーション
+
+## 技術スタック
+- Next.js 15.5.2
+- TypeScript
+- Mastra (AI エージェントフレームワーク)
+- OpenAI GPT-4o
+- YaoSenjutsu API (https://api.yaosenjutsu.com)
+
+## 主要機能
+1. ネイタルチャート作成
+2. トランジット分析
+3. ホロスコープ取得
+4. リアルタイムチャット
+5. ユーザー情報管理
+
+## 重要なファイル
+- `app/lib/mastra-yaosenjutsu.ts` - メインのAIエージェント
+- `app/lib/yaosenjutsu-real.ts` - YaoSenjutsu API統合
+- `app/lib/firebase-mock.ts` - セッション管理
+- `app/components/ChatInterface.tsx` - チャットUI
+- `app/api/chat/route.ts` - APIエンドポイント
+
+## 開発原則
+- 占星術計算の正確性を最優先
+- すべての出力は日本語対応
+- テスト駆動開発（TDD）の徹底
+- モジュラー設計による保守性向上
+- ユーザーデータの適切な保護
