@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Plus, Send, Paperclip, Mic, MessageSquare, Settings, User, Bot, Sparkles, Menu, X } from "lucide-react";
+import { Plus, Send, Paperclip, Mic, MessageSquare, Settings, User, Bot, Sparkles, Menu, X, Copy, Check } from "lucide-react";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface ChatMessage {
   id: string;
@@ -39,6 +41,17 @@ export default function ChatGPTInterface({ threadId }: ChatGPTInterfaceProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [controlNeeds, setControlNeeds] = useState<string[]>([]);
+  const [controlPrompt, setControlPrompt] = useState<string>("");
+  // Controlled inputs for required info form
+  const [formDob, setFormDob] = useState<string>("");
+  const [formTime, setFormTime] = useState<string>("");
+  const [formTimeUnknown, setFormTimeUnknown] = useState<boolean>(false);
+  const [formLocation, setFormLocation] = useState<string>("");
+  const [formSecondDob, setFormSecondDob] = useState<string>("");
+  const [formSecondTime, setFormSecondTime] = useState<string>("");
+  const [formSecondLocation, setFormSecondLocation] = useState<string>("");
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
 
   const activeConversation = conversations.find(c => c.id === activeConversationId);
@@ -99,6 +112,27 @@ export default function ChatGPTInterface({ threadId }: ChatGPTInterfaceProps) {
 
     setIsLoading(true);
 
+    // Create AI message placeholder for streaming
+    const aiMessageId = (Date.now() + 1).toString();
+    const aiMessage: ChatMessage = {
+      id: aiMessageId,
+      content: '',
+      isUser: false,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+
+    // Add empty AI message
+    setConversations(prev => 
+      prev.map(conv => 
+        conv.id === activeConversationId 
+          ? { 
+              ...conv, 
+              messages: [...conv.messages, aiMessage]
+            }
+          : conv
+      )
+    );
+
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -108,44 +142,97 @@ export default function ChatGPTInterface({ threadId }: ChatGPTInterfaceProps) {
         body: JSON.stringify({
           messages: [{ role: 'user', text: userMessage }],
           threadId: threadId,
+          stream: true,
         }),
       });
       
-      const data = await response.json();
-      
-      const aiMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        content: data.text || "申し訳ありません。エラーが発生しました。",
-        isUser: false,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
+      if (!response.ok) {
+        throw new Error('Failed to get response');
+      }
 
-      setConversations(prev => 
-        prev.map(conv => 
-          conv.id === activeConversationId 
-            ? { 
-                ...conv, 
-                messages: [...conv.messages, aiMessage]
+      // Check if streaming is supported
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('text/event-stream')) {
+        // Handle streaming response
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        
+        if (reader) {
+          let accumulatedContent = '';
+          
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            const chunk = decoder.decode(value, { stream: true });
+            // Control marker parsing: __CONTROL__:{json}\n
+            const parts = chunk.split('\n');
+            for (const line of parts) {
+              if (line.startsWith('__CONTROL__:')) {
+                try {
+                  const payload = JSON.parse(line.replace('__CONTROL__:', ''));
+                  if (payload?.type === 'control') {
+                    setControlNeeds(payload.needs || []);
+                    setControlPrompt(payload.prompt || '');
+                  }
+                } catch (e) {
+                  console.warn('Failed to parse control payload', e);
+                }
+              } else {
+                accumulatedContent += line;
               }
-            : conv
-        )
-      );
+            }
+            
+            // Update the AI message content
+            setConversations(prev => 
+              prev.map(conv => 
+                conv.id === activeConversationId 
+                  ? { 
+                      ...conv, 
+                      messages: conv.messages.map(msg => 
+                        msg.id === aiMessageId 
+                          ? { ...msg, content: accumulatedContent }
+                          : msg
+                      )
+                    }
+                  : conv
+              )
+            );
+          }
+        }
+      } else {
+        // Fallback to non-streaming response
+        const data = await response.json();
+        
+        setConversations(prev => 
+          prev.map(conv => 
+            conv.id === activeConversationId 
+              ? { 
+                  ...conv, 
+                  messages: conv.messages.map(msg => 
+                    msg.id === aiMessageId 
+                      ? { ...msg, content: data.text || "申し訳ありません。エラーが発生しました。" }
+                      : msg
+                  )
+                }
+              : conv
+          )
+        );
+      }
     } catch (error) {
       console.error('Chat error:', error);
       
-      const errorMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        content: "申し訳ありません。エラーが発生しました。しばらくしてからもう一度お試しください。",
-        isUser: false,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
-
+      // Update error message
       setConversations(prev => 
         prev.map(conv => 
           conv.id === activeConversationId 
             ? { 
                 ...conv, 
-                messages: [...conv.messages, errorMessage]
+                messages: conv.messages.map(msg => 
+                  msg.id === aiMessageId 
+                    ? { ...msg, content: "申し訳ありません。エラーが発生しました。しばらくしてからもう一度お試しください。" }
+                    : msg
+                )
               }
             : conv
         )
@@ -154,6 +241,31 @@ export default function ChatGPTInterface({ threadId }: ChatGPTInterfaceProps) {
       setIsLoading(false);
     }
   }, [activeConversationId, activeConversation, threadId, message, isLoading]);
+
+  const handleSubmitRequiredInfo = useCallback(async () => {
+    // Construct a concise natural language fill message
+    const parts: string[] = [];
+    if (controlNeeds.includes('dob') && formDob) parts.push(`${formDob.replace(/\//g,'-')}生まれ`);
+    if (controlNeeds.includes('time')) {
+      if (formTimeUnknown) parts.push('時刻不明');
+      else if (formTime) parts.push(`${formTime}生まれ`);
+    }
+    if (controlNeeds.includes('location') && formLocation) parts.push(`${formLocation}出身`);
+    // second person
+    if (controlNeeds.some(n => n.startsWith('second_person'))) {
+      const second: string[] = [];
+      if (formSecondDob) second.push(`相手は${formSecondDob.replace(/\//g,'-')}生まれ`);
+      if (formSecondTime) second.push(`${formSecondTime}生まれ`);
+      if (formSecondLocation) second.push(`${formSecondLocation}出身`);
+      if (second.length) parts.push(second.join('、'));
+    }
+    const synth = parts.join('、');
+    setMessage(synth);
+    // Reset control state and send
+    setControlNeeds([]);
+    setControlPrompt("");
+    await handleSendMessage();
+  }, [controlNeeds, formDob, formTime, formTimeUnknown, formLocation, formSecondDob, formSecondTime, formSecondLocation, handleSendMessage]);
 
   const handleNewConversation = useCallback(() => {
     const newConversation: Conversation = {
@@ -181,6 +293,14 @@ export default function ChatGPTInterface({ threadId }: ChatGPTInterfaceProps) {
       setIsSidebarOpen(false);
     }
   };
+
+  const handleCopyMessage = useCallback((messageId: string, content: string) => {
+    navigator.clipboard.writeText(content);
+    setCopiedMessageId(messageId);
+    setTimeout(() => {
+      setCopiedMessageId(null);
+    }, 2000);
+  }, []);
 
   return (
     <div style={{ height: '100vh', display: 'flex', backgroundColor: '#ffffff', position: 'relative' }}>
@@ -444,82 +564,209 @@ export default function ChatGPTInterface({ threadId }: ChatGPTInterfaceProps) {
                       backgroundColor: msg.isUser ? '#7c3aed' : '#f7f7f8',
                       color: msg.isUser ? 'white' : '#1a1a1a',
                       marginLeft: msg.isUser ? 'auto' : 0,
-                      width: 'fit-content'
+                      width: 'fit-content',
+                      maxWidth: '100%'
                     }}>
-                      <div style={{ whiteSpace: 'pre-wrap', fontSize: '16px', lineHeight: '1.5' }}>
-                        {msg.content}
-                      </div>
+                      {msg.isUser ? (
+                        <div style={{ whiteSpace: 'pre-wrap', fontSize: '16px', lineHeight: '1.5' }}>
+                          {msg.content}
+                        </div>
+                      ) : (
+                        <div className="markdown-content" style={{ fontSize: '16px', lineHeight: '1.5' }}>
+                          {msg.content ? (
+                            <ReactMarkdown 
+                              remarkPlugins={[remarkGfm]}
+                              components={{
+                                p: ({children}) => <p style={{margin: '0 0 16px 0', lineHeight: '1.6'}}>{children}</p>,
+                                ul: ({children}) => <ul style={{margin: '8px 0', paddingLeft: '20px'}}>{children}</ul>,
+                                ol: ({children}) => <ol style={{margin: '8px 0', paddingLeft: '20px'}}>{children}</ol>,
+                                li: ({children}) => <li style={{margin: '4px 0'}}>{children}</li>,
+                                h1: ({children}) => <h1 style={{fontSize: '1.5em', fontWeight: 'bold', margin: '16px 0 8px 0'}}>{children}</h1>,
+                                h2: ({children}) => <h2 style={{fontSize: '1.3em', fontWeight: 'bold', margin: '16px 0 8px 0'}}>{children}</h2>,
+                                h3: ({children}) => <h3 style={{fontSize: '1.1em', fontWeight: 'bold', margin: '12px 0 6px 0'}}>{children}</h3>,
+                                strong: ({children}) => <strong style={{fontWeight: '600'}}>{children}</strong>,
+                                code: ({inline, children}) => 
+                                  inline ? (
+                                    <code style={{
+                                      backgroundColor: 'rgba(0,0,0,0.05)',
+                                      padding: '2px 4px',
+                                      borderRadius: '3px',
+                                      fontSize: '0.9em',
+                                      fontFamily: 'monospace'
+                                    }}>{children}</code>
+                                  ) : (
+                                    <pre style={{
+                                      backgroundColor: '#2d2d2d',
+                                      color: '#f8f8f2',
+                                      padding: '12px',
+                                      borderRadius: '6px',
+                                      overflow: 'auto',
+                                      margin: '8px 0'
+                                    }}>
+                                      <code style={{fontFamily: 'monospace', fontSize: '0.9em'}}>{children}</code>
+                                    </pre>
+                                  ),
+                                blockquote: ({children}) => (
+                                  <blockquote style={{
+                                    borderLeft: '3px solid #7c3aed',
+                                    paddingLeft: '12px',
+                                    margin: '8px 0',
+                                    color: '#666'
+                                  }}>{children}</blockquote>
+                                ),
+                              }}
+                            >
+                              {msg.content}
+                            </ReactMarkdown>
+                          ) : (
+                            isLoading && (
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <div style={{
+                                  width: '8px',
+                                  height: '8px',
+                                  borderRadius: '50%',
+                                  backgroundColor: '#999',
+                                  animation: 'bounce 1.4s infinite ease-in-out',
+                                  animationDelay: '0s'
+                                }} />
+                                <div style={{
+                                  width: '8px',
+                                  height: '8px',
+                                  borderRadius: '50%',
+                                  backgroundColor: '#999',
+                                  animation: 'bounce 1.4s infinite ease-in-out',
+                                  animationDelay: '0.16s'
+                                }} />
+                                <div style={{
+                                  width: '8px',
+                                  height: '8px',
+                                  borderRadius: '50%',
+                                  backgroundColor: '#999',
+                                  animation: 'bounce 1.4s infinite ease-in-out',
+                                  animationDelay: '0.32s'
+                                }} />
+                              </div>
+                            )
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div style={{
-                      fontSize: '11px',
-                      color: '#999',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: msg.isUser ? 'flex-end' : 'space-between',
                       marginTop: '4px',
-                      textAlign: msg.isUser ? 'right' : 'left'
+                      gap: '8px'
                     }}>
-                      {msg.timestamp}
+                      <div style={{
+                        fontSize: '11px',
+                        color: '#999'
+                      }}>
+                        {msg.timestamp}
+                      </div>
+                      {!msg.isUser && msg.content && (
+                        <button
+                          onClick={() => handleCopyMessage(msg.id, msg.content)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '4px 8px',
+                            backgroundColor: 'transparent',
+                            border: 'none',
+                            color: '#666',
+                            fontSize: '12px',
+                            cursor: 'pointer',
+                            borderRadius: '4px',
+                            transition: 'background-color 0.2s'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = '#f0f0f0';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = 'transparent';
+                          }}
+                        >
+                          {copiedMessageId === msg.id ? (
+                            <>
+                              <Check size={12} />
+                              <span>コピー済み</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy size={12} />
+                              <span>コピー</span>
+                            </>
+                          )}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
               ))}
-              {isLoading && (
-                <div style={{ display: 'flex', gap: isMobile ? '8px' : '12px', marginBottom: isMobile ? '16px' : '24px' }}>
-                  <div style={{
-                    width: isMobile ? '28px' : '32px',
-                    height: isMobile ? '28px' : '32px',
-                    borderRadius: '50%',
-                    backgroundColor: '#e5e5e5',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    <Bot size={isMobile ? 14 : 16} color="#666" />
-                  </div>
-                  <div style={{
-                    padding: isMobile ? '10px 12px' : '12px 16px',
-                    borderRadius: '12px',
-                    backgroundColor: '#f7f7f8'
-                  }}>
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      <div style={{
-                        width: '8px',
-                        height: '8px',
-                        borderRadius: '50%',
-                        backgroundColor: '#999',
-                        animation: 'bounce 1.4s infinite ease-in-out',
-                        animationDelay: '0s'
-                      }} />
-                      <div style={{
-                        width: '8px',
-                        height: '8px',
-                        borderRadius: '50%',
-                        backgroundColor: '#999',
-                        animation: 'bounce 1.4s infinite ease-in-out',
-                        animationDelay: '0.16s'
-                      }} />
-                      <div style={{
-                        width: '8px',
-                        height: '8px',
-                        borderRadius: '50%',
-                        backgroundColor: '#999',
-                        animation: 'bounce 1.4s infinite ease-in-out',
-                        animationDelay: '0.32s'
-                      }} />
-                    </div>
-                  </div>
-                </div>
-              )}
               <div ref={messagesEndRef} />
             </div>
           )}
         </div>
 
-        {/* Input Area */}
+        {/* Input Area or Required Info Form */}
         <div style={{
           borderTop: 'none',
           padding: isMobile ? '12px' : '20px',
           backgroundColor: '#ffffff'
         }}>
           <div style={{ maxWidth: isMobile ? '100%' : '800px', margin: '0 auto' }}>
+            {controlNeeds.length > 0 ? (
+              <div style={{
+                padding: '16px',
+                backgroundColor: '#fff7ed',
+                border: '1px solid #fed7aa',
+                borderRadius: '12px',
+                marginBottom: '12px'
+              }}>
+                <div style={{ fontWeight: 600, marginBottom: 8 }}>{controlPrompt || '必要な情報を入力してください'}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
+                  {controlNeeds.includes('dob') && (
+                    <div>
+                      <div style={{ fontSize: 12, marginBottom: 6 }}>生年月日</div>
+                      <input type="date" value={formDob} onChange={(e) => setFormDob(e.target.value)} style={{ width: '100%', padding: 8, borderRadius: 8, border: '1px solid #ddd' }} />
+                    </div>
+                  )}
+                  {controlNeeds.includes('time') && (
+                    <div>
+                      <div style={{ fontSize: 12, marginBottom: 6 }}>出生時刻（不明可）</div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <input type="time" value={formTime} onChange={(e) => setFormTime(e.target.value)} disabled={formTimeUnknown} style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid #ddd' }} />
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                          <input type="checkbox" checked={formTimeUnknown} onChange={(e) => setFormTimeUnknown(e.target.checked)} />
+                          不明
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                  {controlNeeds.includes('location') && (
+                    <div>
+                      <div style={{ fontSize: 12, marginBottom: 6 }}>出生地</div>
+                      <input type="text" placeholder="例: 東京" value={formLocation} onChange={(e) => setFormLocation(e.target.value)} style={{ width: '100%', padding: 8, borderRadius: 8, border: '1px solid #ddd' }} />
+                    </div>
+                  )}
+                  {controlNeeds.some(n => n.startsWith('second_person')) && (
+                    <div style={{ gridColumn: '1 / -1', borderTop: '1px dashed #eee', paddingTop: 8 }}>
+                      <div style={{ fontWeight: 600, marginBottom: 8 }}>相手の情報</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: 8 }}>
+                        <input type="date" value={formSecondDob} onChange={(e) => setFormSecondDob(e.target.value)} placeholder="生年月日" style={{ padding: 8, borderRadius: 8, border: '1px solid #ddd' }} />
+                        <input type="time" value={formSecondTime} onChange={(e) => setFormSecondTime(e.target.value)} placeholder="出生時刻" style={{ padding: 8, borderRadius: 8, border: '1px solid #ddd' }} />
+                        <input type="text" value={formSecondLocation} onChange={(e) => setFormSecondLocation(e.target.value)} placeholder="出生地" style={{ padding: 8, borderRadius: 8, border: '1px solid #ddd' }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button onClick={() => { setControlNeeds([]); setControlPrompt(""); }} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd', background: '#fff' }}>キャンセル</button>
+                  <button onClick={handleSubmitRequiredInfo} style={{ padding: '8px 12px', borderRadius: 8, border: 'none', background: '#7c3aed', color: '#fff' }}>送信</button>
+                </div>
+              </div>
+            ) : (
             <div style={{
               display: 'flex',
               alignItems: 'center',
@@ -629,6 +876,7 @@ export default function ChatGPTInterface({ threadId }: ChatGPTInterfaceProps) {
                 <Send size={16} color={message.trim() && !isLoading ? 'white' : '#999'} />
               </button>
             </div>
+            )}
             
             <div style={{
               textAlign: 'center',

@@ -47,6 +47,56 @@
 - ユーザー情報抽出機能の実装
 - 都市名から座標への変換機能を追加
 
+### 2025-01-09
+
+#### ✅ ChatGPTスタイルインターフェースの実装とストリーミング対応
+- **実装内容**:
+  - ChatGPT風のチャットインターフェースを実装（ChatGPTInterface.tsx）
+  - OpenAI APIストリーミング対応でリアルタイム表示を実現
+  - 日本語IMEの入力中制御（compositionstart/end）を適切に処理
+  - ReactMarkdownとremark-gfmでマークダウンレンダリング対応
+
+#### ✅ コントロールイベント機能の実装
+- **必要情報収集フォーム**:
+  - `__CONTROL__`イベントパターンでフォーム表示制御
+  - 生年月日、出生時刻、出生地の段階的収集
+  - 相性占い用のセカンドパーソン情報収集対応
+- **実装詳細**:
+  - processMessageStreamメソッドでコントロールイベント送信
+  - ChatGPTInterface側でフォーム表示とサブミット処理
+
+#### ✅ mastra-yaosenjutsu.ts の大規模リファクタリング
+- **コード品質改善**:
+  - 環境変数検証（OPENAI_API_KEY必須チェック）
+  - TypeScript型定義の追加（UserInfo, ChartRequest, ProcessingResult等）
+  - エラーハンドリングの統一化（handleStreamErrorメソッド）
+  - マジックナンバーの定数化（CONSTANTS オブジェクト）
+  - 日付検証ロジックの共通化（validateDateメソッド）
+- **定数定義**:
+  ```typescript
+  MAX_TOKENS: 2000 (800から増加)
+  CACHE_DURATION_MS: 24時間
+  DEFAULT_TIMEZONE: '+09:00'
+  DEFAULT_LOCATION: '東京'
+  ```
+
+#### ✅ API連携の改善
+- **自動チャート取得**:
+  - ユーザー情報入力時に自動的にネイタルチャート取得
+  - デフォルトでnatalエンドポイントを呼び出し
+  - チャートデータをシステムプロンプトに含める
+- **データ活用**:
+  - ハウスカスプ、惑星位置、アスペクトの詳細表示
+  - createChartSummaryForPromptで構造化されたデータ提供
+
+#### 🔧 技術的課題と解決
+- **問題1**: git checkoutによる変更喪失
+  - 解決: ChatGPTInterface.tsxは保持、mastra-yaosenjutsu.tsのみ再実装
+- **問題2**: ストリーミング表示の改行喪失
+  - 解決: OpenAI APIストリーミングを直接使用
+- **問題3**: APIデータが自動取得されない
+  - 解決: prepareMessagesでデフォルトnatal取得を実装
+
 ### 2025-01-12
 
 #### ✅ YaoSenjutsu API統合とMastraエージェント実装

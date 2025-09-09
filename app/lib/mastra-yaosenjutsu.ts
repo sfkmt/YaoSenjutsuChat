@@ -387,7 +387,7 @@ ${chartSummary}`
         model: 'gpt-4o',
         messages,
         temperature: 0.7,
-        max_tokens: 800,
+        max_tokens: 2000, // 800から2000に増加
       })
 
       const assistantMessage = completion.choices[0].message.content || 'すみません、回答を生成できませんでした。'
@@ -416,6 +416,172 @@ ${chartSummary}`
       
       return 'すみません、エラーが発生しました。もう一度お試しください。'
     }
+  }
+
+  async processMessageStream(message: string, threadId: string, onChunk: (chunk: string) => void): Promise<void> {
+    try {
+      // Always load the latest context from storage
+      await this.initialize(threadId)
+
+      // ユーザーメッセージを追加
+      this.context!.messages.push({
+        role: 'user',
+        content: message,
+        timestamp: Date.now(),
+      })
+
+      // ユーザー情報を抽出
+      console.log('Extracting user info from message:', message)
+      const extracted = this.extractUserInfo(message)
+
+      if (extracted.dateOfBirth || extracted.datetime || extracted.location || extracted.gender) {
+        if (!this.context!.userInfo) {
+          this.context!.userInfo = {}
+        }
+        if (extracted.dateOfBirth) {
+          this.context!.userInfo.dateOfBirth = extracted.dateOfBirth
+        }
+        if (extracted.datetime) {
+          this.context!.userInfo.datetime = extracted.datetime
+        }
+        if (extracted.location) {
+          this.context!.userInfo.birthLocation = extracted.location
+        }
+        if (extracted.gender) {
+          this.context!.userInfo.gender = extracted.gender
+        }
+      }
+      
+      console.log('Context userInfo:', this.context!.userInfo)
+
+      // ユーザー情報が不足している場合はコントロールイベントを送信
+      if (!this.context!.userInfo?.dateOfBirth) {
+        const control = {
+          type: 'control',
+          needs: ['dob', 'time', 'location'],
+          prompt: 'チャート作成に必要な情報を入力してください（出生時刻は不明でも可）。'
+        }
+        onChunk(`__CONTROL__:${JSON.stringify(control)}\n`)
+        return
+      }
+
+      // OpenAI APIを直接呼び出してストリーミング
+      const messages = await this.prepareMessages(message, threadId)
+      
+      const stream = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages,
+        temperature: 0.7,
+        max_tokens: 2000,
+        stream: true,
+      })
+
+      let fullMessage = ''
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content || ''
+        if (content) {
+          fullMessage += content
+          onChunk(content)
+        }
+      }
+
+      // アシスタントメッセージを追加
+      this.context!.messages.push({
+        role: 'assistant',
+        content: fullMessage,
+        timestamp: Date.now(),
+      })
+
+      // 会話を保存
+      await saveConversation(this.context!)
+      
+    } catch (error) {
+      console.error('Streaming error:', error)
+      
+      // エラーの種類に応じた処理
+      if (error instanceof Error) {
+        if (error.message === 'NEED_SECOND_PERSON_INFO') {
+          const control = {
+            type: 'control',
+            needs: ['second_person.dob', 'second_person.time', 'second_person.location'],
+            prompt: '相性を占うために、パートナーの生年月日・出生時刻（不明可）・出生地を入力してください。'
+          }
+          onChunk(`__CONTROL__:${JSON.stringify(control)}\n`)
+          return
+        }
+      }
+      
+      onChunk('エラーが発生しました。もう一度お試しください。')
+    }
+  }
+
+  // メッセージ準備用のヘルパーメソッド
+  private async prepareMessages(message: string, threadId: string): Promise<any[]> {
+    // Determine what type of data to fetch based on keywords
+    let chartData = null
+    const { primary } = this.determineRequestType(message)
+    
+    // ユーザー情報があれば、デフォルトでネイタルチャートを取得
+    const actualPrimary = primary || (this.context!.userInfo?.dateOfBirth ? 'natal' : null)
+    
+    if (actualPrimary && this.context!.userInfo?.dateOfBirth) {
+      try {
+        const birthData = {
+          name: 'ユーザー',
+          datetime: this.context!.userInfo.datetime || 
+            (this.context!.userInfo.dateOfBirth + 'T12:00:00+09:00'),
+          location: this.context!.userInfo.birthLocation || '東京',
+          language: 'ja' as const,
+        }
+        
+        // Fetch chart data (simplified version)
+        switch (actualPrimary) {
+          case 'yaonatal':
+            chartData = await yaoSenjutsuRealAPI.getYaoNatal(birthData)
+            break
+          case 'natal':
+            chartData = await yaoSenjutsuRealAPI.getNatalChart(birthData)
+            break
+        }
+        
+        if (chartData) {
+          chartData.chart_type = actualPrimary
+          console.log('=== CHART DATA FETCHED ===')
+          console.log('Chart type:', actualPrimary)
+          console.log('Data keys:', Object.keys(chartData))
+        }
+      } catch (error) {
+        console.error('Chart fetch error:', error)
+      }
+    }
+
+    // システムプロンプト作成
+    let chartSummary = ''
+    if (chartData) {
+      chartSummary = '\n' + createChartSummaryForPrompt(chartData)
+    }
+    
+    const systemPrompt = `あなたは優しく親身な占星術コーチングアシスタントです。
+ユーザーの悩みに共感し、占星術の知見を基に前向きなアドバイスを提供します。
+専門用語は避け、分かりやすい日本語で説明してください。
+
+${this.context!.userInfo?.dateOfBirth ? 
+  `ユーザー情報: 
+生年月日時: ${this.context!.userInfo.datetime || (this.context!.userInfo.dateOfBirth + ' 12:00')}
+出生地: ${this.context!.userInfo.birthLocation || '未設定'}` : 
+  'まだユーザー情報が提供されていません。生年月日と出生地を尋ねてください。'}
+${chartSummary}`
+
+    // メッセージ履歴を作成
+    const messages = [
+      { role: 'system' as const, content: systemPrompt },
+      ...this.context!.messages.slice(-10).map(msg => ({
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content,
+      })),
+    ]
+
+    return messages
   }
 
   extractUserInfo(message: string): {

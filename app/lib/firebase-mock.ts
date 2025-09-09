@@ -16,6 +16,7 @@ export interface ConversationContext {
     birthLat?: number
     birthLon?: number
     gender?: 'male' | 'female'
+    timeUnknown?: boolean
   }
   secondUserInfo?: {
     dateOfBirth?: string
@@ -25,6 +26,7 @@ export interface ConversationContext {
     birthLon?: number
     gender?: 'male' | 'female'
     name?: string
+    timeUnknown?: boolean
   }
   chartData?: {
     primary?: any

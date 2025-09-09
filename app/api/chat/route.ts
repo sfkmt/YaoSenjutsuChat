@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
     console.log('Request body:', JSON.stringify(body, null, 2))
     
     // DeepChatは messages 配列を送信する
-    const { messages, threadId } = body
+    const { messages, threadId, stream } = body
     
     // threadIdがない場合はランダムに生成
     const actualThreadId = threadId || `thread_${Date.now()}_${Math.random().toString(36).substring(7)}`
@@ -31,18 +31,50 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('Processing message:', messageText, 'with threadId:', actualThreadId)
+    console.log('Processing message:', messageText, 'with threadId:', actualThreadId, 'stream:', stream)
 
-    // Process message with YaoSenjutsu Mastra agent
-    const response = await mastraYaoSenjutsuAgent.processMessage(
-      messageText,
-      actualThreadId
-    )
+    // Check if streaming is requested
+    if (stream) {
+      // Create a readable stream for streaming response
+      const encoder = new TextEncoder()
+      const readableStream = new ReadableStream({
+        async start(controller) {
+          try {
+            // Process message with streaming
+            await mastraYaoSenjutsuAgent.processMessageStream(
+              messageText,
+              actualThreadId,
+              (chunk: string) => {
+                controller.enqueue(encoder.encode(chunk))
+              }
+            )
+            controller.close()
+          } catch (error) {
+            console.error('Streaming error:', error)
+            controller.error(error)
+          }
+        },
+      })
 
-    // Return response in DeepChat format
-    return NextResponse.json({
-      text: response,
-    })
+      return new Response(readableStream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      })
+    } else {
+      // Non-streaming response (original behavior)
+      const response = await mastraYaoSenjutsuAgent.processMessage(
+        messageText,
+        actualThreadId
+      )
+
+      // Return response in DeepChat format
+      return NextResponse.json({
+        text: response,
+      })
+    }
   } catch (error) {
     console.error('Chat API error:', error)
     return NextResponse.json(
